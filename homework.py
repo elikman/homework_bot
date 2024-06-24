@@ -72,7 +72,8 @@ def get_api_answer(timestamp):
     params = {"from_date": timestamp}
     logging.info("Производим запрос к %s с параметрами %s.", ENDPOINT, params)
     try:
-        response = requests.get(ENDPOINT, headers=HEADERS, params=params, timeout=10)
+        response = requests.get(ENDPOINT, headers=HEADERS, params=params,
+                                timeout=10)
     except requests.RequestException as error:
         raise APIRequestError(
             f"Ошибка запроса к {ENDPOINT} c params={params}."
