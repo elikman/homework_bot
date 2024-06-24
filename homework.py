@@ -8,7 +8,6 @@ from http import HTTPStatus
 import requests
 import telebot
 from dotenv import load_dotenv
-
 from exceptions import (
     APIRequestError,
     InvalidAPIResponseError,
@@ -18,17 +17,13 @@ from exceptions import (
 
 load_dotenv()
 
-
 PRACTICUM_TOKEN = os.getenv("PRACTICUM_TOKEN")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-
 RETRY_PERIOD = 600
 ENDPOINT = "https://practicum.yandex.ru/api/user_api/homework_statuses/"
 HEADERS = {"Authorization": f"OAuth {PRACTICUM_TOKEN}"}
-PAYLOAD = {"from_date": 0}
-
 
 HOMEWORK_VERDICTS = {
     "approved": "Работа проверена: ревьюеру всё понравилось. Ура!",
@@ -43,8 +38,9 @@ logging.basicConfig(
     encoding="utf-8",
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
-logging.StreamHandler(sys.stdout)
+
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.StreamHandler(sys.stdout))
 
 
 def check_tokens():
@@ -76,8 +72,7 @@ def get_api_answer(timestamp):
     params = {"from_date": timestamp}
     logging.info("Производим запрос к %s с параметрами %s.", ENDPOINT, params)
     try:
-        response = requests.get(ENDPOINT, headers=HEADERS,
-                                params=params, timeout=10)
+        response = requests.get(ENDPOINT, headers=HEADERS, params=params, timeout=10)
     except requests.RequestException as error:
         raise APIRequestError(
             f"Ошибка запроса к {ENDPOINT} c params={params}."
@@ -93,11 +88,10 @@ def get_api_answer(timestamp):
     logging.info("Запрос к %s с параметрами %s успешен!", ENDPOINT, params)
 
     try:
-        response = response.json()
+        return response.json()
     except json.JSONDecodeError as error:
-        logging.error('API response is not in format', error)
-
-    return response
+        logging.error('API response is not in format', exc_info=error)
+        raise InvalidAPIResponseError('API response is not in JSON format') from error
 
 
 def check_response(response):
@@ -116,8 +110,6 @@ def check_response(response):
     homeworks = response.get("homeworks")
     if not isinstance(homeworks, list):
         raise TypeError("Значение ключа homeworks не является списком.")
-    if not homeworks:
-        logging.info("Список домашних работ пуст.")
     return homeworks
 
 
@@ -137,8 +129,7 @@ def parse_status(homework):
         raise UnknownHomeworkStatusError(
             f"Неизвестный статус домашней работы: {homework_status}"
         )
-    verdict = HOMEWORK_VERDICTS[homework_status]
-    return f'Изменился статус проверки работы "{homework_name}". {verdict}'
+    return f'Изменился статус проверки работы "{homework_name}". {HOMEWORK_VERDICTS[homework_status]}'
 
 
 def main():
@@ -146,37 +137,40 @@ def main():
     check_tokens()
 
     bot = telebot.TeleBot(token=TELEGRAM_TOKEN)
-    timestamp = int(time.time())
+    N = 10
+    timestamp = int(time.time()) - N
 
     send_message(bot, TEXT)
 
     last_error_message = None
 
-    try:
-        while True:
-            try:
-                response = get_api_answer(timestamp)
-                if not response:
-                    logging.error("Ошибка запроса к эндпоинту: %s.")
+    while True:
+        try:
+            response = get_api_answer(timestamp)
 
-                homeworks = check_response(response)
-                if homeworks:
-                    message = parse_status(homeworks[0])
-                    send_message(bot, message)
-                else:
-                    logging.debug("Отсутствие новых статусов в ответе API.")
-                timestamp = response.get("current_date", timestamp)
-            except Exception as error:
-                message = f"Сбой в работе программы: {error}."
-                logging.error(message, exc_info=True)
-                if last_error_message != message:
-                    send_message(bot, message)
-                    last_error_message = message
-            finally:
-                time.sleep(RETRY_PERIOD)
-    except KeyboardInterrupt:
-        logging.info("Программа остановлена пользователем.")
+            homeworks = check_response(response)
+            if homeworks:
+                message = parse_status(homeworks[0])
+                send_message(bot, message)
+                last_error_message = ""
+            else:
+                logging.debug("Отсутствие новых статусов в ответе API.")
+
+            timestamp = response.get("current_date", timestamp)
+
+        except Exception as error:
+            message = f"Сбой в работе программы: {error}."
+            logging.error(message, exc_info=True)
+            if last_error_message != message:
+                send_message(bot, message)
+                last_error_message = message
+
+        finally:
+            time.sleep(RETRY_PERIOD)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        logging.info("Программа остановлена пользователем.")
