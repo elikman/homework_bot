@@ -92,7 +92,8 @@ def get_api_answer(timestamp):
         return response.json()
     except json.JSONDecodeError as error:
         logging.error('API response is not in format', exc_info=error)
-        raise InvalidAPIResponseError('API response is not in JSON format') from error
+        raise InvalidAPIResponseError(
+            'API response is not in JSON format') from error
 
 
 def check_response(response):
@@ -130,7 +131,9 @@ def parse_status(homework):
         raise UnknownHomeworkStatusError(
             f"Неизвестный статус домашней работы: {homework_status}"
         )
-    return f'Изменился статус проверки работы "{homework_name}". {HOMEWORK_VERDICTS[homework_status]}'
+    return (
+        f'Изменился статус проверки работы "{homework_name}".'
+        f'{HOMEWORK_VERDICTS[homework_status]}')
 
 
 def main():
